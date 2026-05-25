@@ -3721,6 +3721,11 @@ static vm_fault_t handle_pte_marker(struct vm_fault *vmf)
  */
 vm_fault_t do_swap_page(struct vm_fault *vmf)
 {
+    // TODO(paul): Update this function.
+    // Check cgroup counters.
+    // Add 1 to number of promotions for this cgroup.
+    // 1) Get current cgroup
+    // 2) Update cgroup num promotions counter.
 	struct vm_area_struct *vma = vmf->vma;
 	struct folio *swapcache, *folio = NULL;
 	struct page *page;
