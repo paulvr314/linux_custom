@@ -233,8 +233,10 @@ struct mem_cgroup {
 
 	unsigned long soft_limit;
 
+    // TODO(paul): Learn how vmpressure works.
 	/* vmpressure notifications */
 	struct vmpressure vmpressure;
+    // TODO(paul): Add number of promotions here.
 
 	/*
 	 * Should the OOM killer kill all belonging tasks, had it kill one?
@@ -249,6 +251,8 @@ struct mem_cgroup {
 	/* OOM-Killer disable */
 	int		oom_kill_disable;
 
+    // TODO(paul): Understand how the cgroup
+    // files work and add your own for promotions.
 	/* memory.events and memory.events.local */
 	struct cgroup_file events_file;
 	struct cgroup_file events_local_file;
@@ -279,6 +283,8 @@ struct mem_cgroup {
 
 	CACHELINE_PADDING(_pad1_);
 
+    // TODO(paul): Should we use this instead of the
+    // counter above?
 	/* memory.stat */
 	struct memcg_vmstats	*vmstats;
 

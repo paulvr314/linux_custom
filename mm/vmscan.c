@@ -7928,6 +7928,8 @@ static int __init kswapd_init(void)
 	return 0;
 }
 
+// TODO(paul): Learn about module init and use it
+// for promotion rate thread.
 module_init(kswapd_init)
 
 #ifdef CONFIG_NUMA
