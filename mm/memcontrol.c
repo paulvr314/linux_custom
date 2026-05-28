@@ -5324,6 +5324,7 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 	INIT_LIST_HEAD(&memcg->event_list);
 	spin_lock_init(&memcg->event_list_lock);
 	memcg->socket_pressure = jiffies;
+	atomic64_set(&memcg->nr_promotions, 0);
 #ifdef CONFIG_MEMCG_KMEM
 	memcg->kmemcg_id = -1;
 	INIT_LIST_HEAD(&memcg->objcg_list);
@@ -6618,6 +6619,14 @@ static int memory_stat_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+/*paul experimental code to add count to /sys/fs/cgroup/ files*/
+static int memory_cgroup_promotions_show(struct seq_file *sf, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_seq(sf);
+	seq_printf(sf, "%lld\n", atomic64_read(&memcg->nr_promotions));
+	return 0;
+}
+
 #ifdef CONFIG_NUMA
 static inline unsigned long lruvec_page_state_output(struct lruvec *lruvec,
 						     int item)
@@ -6795,6 +6804,10 @@ static struct cftype memory_files[] = {
 		.name = "reclaim",
 		.flags = CFTYPE_NS_DELEGATABLE,
 		.write = memory_reclaim,
+	},
+	{   .name = "promotions",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.seq_show = memory_cgroup_promotions_show,
 	},
 	{ }	/* terminate */
 };

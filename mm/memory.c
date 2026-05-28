@@ -3851,6 +3851,19 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		ret = VM_FAULT_MAJOR;
 		count_vm_event(PGMAJFAULT);
 		count_memcg_event_mm(vma->vm_mm, PGMAJFAULT);
+
+		/*paul experimental code to increment his own counter*/
+		#ifdef CONFIG_MEMCG
+		{
+			struct mem_cgroup *memcg;
+			rcu_read_lock();
+			memcg = mem_cgroup_from_task(current);
+			if (memcg)
+				atomic64_inc(&memcg->nr_promotions);
+			rcu_read_unlock();
+		}
+		#endif
+		
 	} else if (PageHWPoison(page)) {
 		/*
 		 * hwpoisoned dirty swapcache pages are kept for killing

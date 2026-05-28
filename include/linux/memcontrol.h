@@ -236,7 +236,9 @@ struct mem_cgroup {
     // TODO(paul): Learn how vmpressure works.
 	/* vmpressure notifications */
 	struct vmpressure vmpressure;
-    // TODO(paul): Add number of promotions here.
+
+	/* Number of promotions */
+    atomic64_t nr_promotions;
 
 	/*
 	 * Should the OOM killer kill all belonging tasks, had it kill one?
