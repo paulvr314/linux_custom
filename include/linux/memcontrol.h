@@ -227,6 +227,10 @@ struct mem_cgroup {
 	/* Range enforcement for interrupt charges */
 	struct work_struct high_work;
 
+	/*paul page logger def*/
+	void page_logger_init(void);
+	void page_logger_cleanup(void);
+
 #if defined(CONFIG_MEMCG_KMEM) && defined(CONFIG_ZSWAP)
 	unsigned long zswap_max;
 #endif

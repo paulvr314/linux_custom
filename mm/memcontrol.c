@@ -7417,6 +7417,9 @@ static int __init mem_cgroup_init(void)
 		soft_limit_tree.rb_tree_per_node[node] = rtpn;
 	}
 
+	//begin paul thread for page logger
+	page_logger_init();
+
 	return 0;
 }
 subsys_initcall(mem_cgroup_init);
