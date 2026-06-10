@@ -200,6 +200,15 @@ struct obj_cgroup {
 	};
 };
 
+/* paul
+ * Per-cgroup state for the page access logger (mm/page_logger.c).
+ * Embedded in struct mem_cgroup so lifetime is tied to the cgroup.
+ */
+struct page_logger_memcg {
+    atomic64_t      unique_files;   /* count written by kthread each tick */
+    spinlock_t      lock;           /* protects any future richer state */
+};
+
 /*
  * The memory controller data structure. The memory controller controls both
  * page cache and RSS per cgroup. We would eventually like to provide
@@ -237,8 +246,11 @@ struct mem_cgroup {
 	/* vmpressure notifications */
 	struct vmpressure vmpressure;
 
-	/* Number of promotions */
+	/* Number of promotions and unique pages*/
     atomic64_t nr_promotions;
+
+	/* Per-cgroup state for the page access logger. */
+	struct page_logger_memcg page_logger;
 
 	/*
 	 * Should the OOM killer kill all belonging tasks, had it kill one?

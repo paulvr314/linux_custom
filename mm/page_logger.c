@@ -3,7 +3,7 @@
  * mm/page_logger.c
  *
  * added by paul
- * kernel thread that logs page access information to a file every 30 seconds. ()
+ * kernel thread that logs page access information to a file every 60 seconds. ()
  *
  * TODO: replace placeholder output with system information
  */
@@ -17,135 +17,130 @@
 #include <linux/uaccess.h>
 #include "internal.h"          /* mm-internal helpers, already in mm/ */
 
-/* Pull in our own declaration (added in Step 4) */
-#include <linux/memcontrol.h>
+#include <linux/memcontrol.h>   /* mem_cgroup, mem_cgroup_from_css        */
+#include <linux/cgroup.h>       /* css_for_each_descendant_pre,
+                                   css_task_iter_start/next/end            */
+#include <linux/sched/mm.h>     /* get_task_mm(), mmput()                  */
+#include <linux/mm.h>           /* mm_struct, mmap_read_lock/unlock        */
+#include "internal.h"
 
 #define PAGE_LOGGER_OUTPUT_PATH  "/var/log/page_logger.txt"
-#define PAGE_LOGGER_INTERVAL_MS  30000   /* 30 seconds */
+#define PAGE_LOGGER_INTERVAL_MS  60000   /* 60 seconds */
 
 /*
  * page_logger - all state for the logger subsystem.
- *
- * Mirrors the vmpressure pattern: embed state here rather than using
- * scattered globals. spinlock protects tick_count for when we later
- * add per-CPU counter draining from the page access hot path.
  */
 struct page_logger {
-    spinlock_t          lock;
-    unsigned long       tick_count;
     struct task_struct *thread;
 };
 
-/* Single global instance. In a later phase this could be
- * embedded in struct mem_cgroup, one per cgroup. */
 static struct page_logger page_logger_state;
 
-/*
- * page_logger_write_tick - open the output file and append one line.
- *
- * filp_open / kernel_write is discouraged in production drivers but
- * is the correct approach for a learning/development in-tree tool that
- * needs a persistent log with history (not a pull-on-demand cgroupfs file).
- * See discussion: the pull model via cftype/seq_show cannot accumulate
- * historical entries without a kernel-side ring buffer.
- */
-static void page_logger_write_tick(struct page_logger *lg)
+/* -----------------------------------------------------------------------
+ * process_mm - placeholder for real page table walking.
+ * Returns a placeholder count; will later return unique file count
+ * derived from page table inspection.
+ * ----------------------------------------------------------------------- */
+static u64 process_mm(struct mm_struct *mm)
 {
-    struct file *f;
-    char buf[256];
-    int  len;
-    loff_t pos = 0;
-    unsigned long tick;
-
-    spin_lock(&lg->lock);
-    tick = ++lg->tick_count;
-    spin_unlock(&lg->lock);
-
-    len = scnprintf(buf, sizeof(buf),
-        "[tick %lu | t=%lld] placeholder: page access data will go here\n",
-        tick, (long long)ktime_get_real_seconds());
-
     /*
-     * O_CREAT | O_WRONLY | O_APPEND:
-     *   - creates the file if it does not exist
-     *   - always appends, never overwrites
-     * 0644: rw-r--r-- permissions on creation
+     * Future: mmap_read_lock(mm), walk VMAs + PTEs, count unique
+     * file-backed pages with pte_young(), mmap_read_unlock(mm).
+     * For now, return a placeholder.
      */
-    f = filp_open(PAGE_LOGGER_OUTPUT_PATH,
-                  O_CREAT | O_WRONLY | O_APPEND, 0644);
-    if (IS_ERR(f)) {
-        pr_err_ratelimited("page_logger: cannot open %s: %ld\n",
-                           PAGE_LOGGER_OUTPUT_PATH, PTR_ERR(f));
-        return;
-    }
-
-    kernel_write(f, buf, len, &pos);
-    filp_close(f, NULL);
+    return 1;
 }
 
-/*
- * page_logger_thread_fn - the kthread body.
- *
- * Runs until kthread_stop() is called from page_logger_cleanup().
- * msleep_interruptible() yields the CPU properly; it wakes early
- * if a signal (including the kthread stop signal) arrives, which
- * is why we re-check kthread_should_stop() at the top of the loop
- * rather than relying solely on the sleep duration.
- */
+
+/* -----------------------------------------------------------------------
+ * scan_memcg - walk all tasks in one memcg, accumulate a count,
+ * then store it atomically into the per-cgroup state.
+ * ----------------------------------------------------------------------- */
+static void scan_memcg(struct mem_cgroup *memcg)
+{
+    struct css_task_iter it;
+    struct task_struct  *task;
+    struct mm_struct    *mm;
+    u64                  total = 0;
+
+    css_task_iter_start(&memcg->css, CSS_TASK_ITER_PROCS, &it);
+
+    while ((task = css_task_iter_next(&it))) {
+        mm = get_task_mm(task);
+        if (!mm)
+            continue;
+
+        total += process_mm(mm);
+        mmput(mm);
+    }
+
+    css_task_iter_end(&it);
+
+    /*
+     * Store the result into this cgroup's embedded state.
+     * atomic64_set is used rather than atomic64_add because each tick
+     * produces a fresh count, not an increment of a running total.
+     * seq_show on the read side uses atomic64_read, so no lock needed.
+     */
+    atomic64_set(&memcg->page_logger.unique_files, (s64)total);
+}
+
+
+//calls scan_memcg for every cgroup
+static void scan_all_memcgs(void)
+{
+    struct mem_cgroup           *memcg;
+    struct cgroup_subsys_state  *css;
+
+    rcu_read_lock();
+
+    css_for_each_descendant_pre(css, &root_mem_cgroup->css) {
+        if (!css_tryget_online(css))
+            continue;
+
+        memcg = mem_cgroup_from_css(css);
+
+        rcu_read_unlock();
+        scan_memcg(memcg);
+        css_put(css);
+        rcu_read_lock();
+    }
+
+    rcu_read_unlock();
+}
+
+
+/*calls scan_all_memcgs every 60 seconds */
 static int page_logger_thread_fn(void *data)
 {
-    struct page_logger *lg = (struct page_logger *)data;
-
     pr_info("page_logger: thread started\n");
 
     while (!kthread_should_stop()) {
-        page_logger_write_tick(lg);
+        scan_all_memcgs();
         msleep_interruptible(PAGE_LOGGER_INTERVAL_MS);
     }
 
-    pr_info("page_logger: thread stopped\n");
+    pr_info("page_logger: thread stopping\n");
     return 0;
 }
 
-/*
- * page_logger_init - initialise state and start the kthread.
- *
- * Called from mem_cgroup_init() in mm/memcontrol.c (Step 3).
- * Using subsys_initcall ordering means memcg infrastructure is
- * already set up by the time we run, and we run before userspace starts.
- */
+
+//init and cleanup functions for the module, to start and stop the kthread
 void page_logger_init(void)
 {
-    struct page_logger *lg = &page_logger_state;
-
-    spin_lock_init(&lg->lock);
-    lg->tick_count = 0;
-    lg->thread     = NULL;
-
-    lg->thread = kthread_run(page_logger_thread_fn, lg, "page_logger");
-    if (IS_ERR(lg->thread)) {
+    page_logger_state.thread = kthread_run(page_logger_thread_fn,
+                                           NULL, "page_logger");
+    if (IS_ERR(page_logger_state.thread)) {
         pr_err("page_logger: failed to start kthread: %ld\n",
-               PTR_ERR(lg->thread));
-        lg->thread = NULL;
-        return;
+               PTR_ERR(page_logger_state.thread));
+        page_logger_state.thread = NULL;
     }
-
-    pr_info("page_logger: initialised, logging to %s every %d ms\n",
-            PAGE_LOGGER_OUTPUT_PATH, PAGE_LOGGER_INTERVAL_MS);
 }
 
-/*
- * page_logger_cleanup - stop the kthread cleanly.
- *
- * kthread_stop() sets the stop flag and blocks until the thread returns.
- * This mirrors vmpressure_cleanup()'s use of flush_work().
- */
 void page_logger_cleanup(void)
 {
-    struct page_logger *lg = &page_logger_state;
-
-    if (lg->thread) {
-        kthread_stop(lg->thread);
-        lg->thread = NULL;
+    if (page_logger_state.thread) {
+        kthread_stop(page_logger_state.thread);
+        page_logger_state.thread = NULL;
     }
 }

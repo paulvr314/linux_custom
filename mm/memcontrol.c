@@ -5325,6 +5325,8 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 	spin_lock_init(&memcg->event_list_lock);
 	memcg->socket_pressure = jiffies;
 	atomic64_set(&memcg->nr_promotions, 0);
+	atomic64_set(&memcg->page_logger.unique_files, 0);
+    spin_lock_init(&memcg->page_logger.lock);
 #ifdef CONFIG_MEMCG_KMEM
 	memcg->kmemcg_id = -1;
 	INIT_LIST_HEAD(&memcg->objcg_list);
@@ -6627,6 +6629,15 @@ static int memory_cgroup_promotions_show(struct seq_file *sf, void *v)
 	return 0;
 }
 
+//paul code to count page accesses
+static int memory_accessed_files_show(struct seq_file *m, void *v)
+{
+    struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
+
+    seq_printf(m, "%lld\n", atomic64_read(&memcg->page_logger.unique_files));
+    return 0;
+}
+
 #ifdef CONFIG_NUMA
 static inline unsigned long lruvec_page_state_output(struct lruvec *lruvec,
 						     int item)
@@ -6809,6 +6820,11 @@ static struct cftype memory_files[] = {
 		.flags = CFTYPE_NOT_ON_ROOT,
 		.seq_show = memory_cgroup_promotions_show,
 	},
+	{
+        .name     = "accessed_files",
+        .flags    = CFTYPE_NOT_ON_ROOT,
+        .seq_show = memory_accessed_files_show,
+    },
 	{ }	/* terminate */
 };
 
