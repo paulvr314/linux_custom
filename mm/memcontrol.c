@@ -5324,9 +5324,9 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 	INIT_LIST_HEAD(&memcg->event_list);
 	spin_lock_init(&memcg->event_list_lock);
 	memcg->socket_pressure = jiffies;
+	//paul
 	atomic64_set(&memcg->nr_promotions, 0);
-	atomic64_set(&memcg->page_logger.unique_files, 0);
-    spin_lock_init(&memcg->page_logger.lock);
+	atomic64_set(&memcg->nr_unique_pages, 0);
 #ifdef CONFIG_MEMCG_KMEM
 	memcg->kmemcg_id = -1;
 	INIT_LIST_HEAD(&memcg->objcg_list);
@@ -6634,7 +6634,7 @@ static int memory_accessed_files_show(struct seq_file *m, void *v)
 {
     struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
 
-    seq_printf(m, "%lld\n", atomic64_read(&memcg->page_logger.unique_files));
+    seq_printf(m, "%lld\n", atomic64_read(&memcg->nr_unique_pages));
     return 0;
 }
 

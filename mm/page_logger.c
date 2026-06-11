@@ -27,35 +27,18 @@
 #define PAGE_LOGGER_OUTPUT_PATH  "/var/log/page_logger.txt"
 #define PAGE_LOGGER_INTERVAL_MS  60000   /* 60 seconds */
 
-/*
- * page_logger - all state for the logger subsystem.
- */
-struct page_logger {
-    struct task_struct *thread;
-};
+//single thread for page logging
+static struct task_struct *page_logger_thread;
 
-static struct page_logger page_logger_state;
 
-/* -----------------------------------------------------------------------
- * process_mm - placeholder for real page table walking.
- * Returns a placeholder count; will later return unique file count
- * derived from page table inspection.
- * ----------------------------------------------------------------------- */
+//walk the page table
 static u64 process_mm(struct mm_struct *mm)
 {
-    /*
-     * Future: mmap_read_lock(mm), walk VMAs + PTEs, count unique
-     * file-backed pages with pte_young(), mmap_read_unlock(mm).
-     * For now, return a placeholder.
-     */
     return 1;
 }
 
 
-/* -----------------------------------------------------------------------
- * scan_memcg - walk all tasks in one memcg, accumulate a count,
- * then store it atomically into the per-cgroup state.
- * ----------------------------------------------------------------------- */
+//sum counts for each process in cgroup
 static void scan_memcg(struct mem_cgroup *memcg)
 {
     struct css_task_iter it;
@@ -76,13 +59,7 @@ static void scan_memcg(struct mem_cgroup *memcg)
 
     css_task_iter_end(&it);
 
-    /*
-     * Store the result into this cgroup's embedded state.
-     * atomic64_set is used rather than atomic64_add because each tick
-     * produces a fresh count, not an increment of a running total.
-     * seq_show on the read side uses atomic64_read, so no lock needed.
-     */
-    atomic64_set(&memcg->page_logger.unique_files, (s64)total);
+    atomic64_set(&memcg->nr_unique_pages, (s64)total);
 }
 
 
@@ -128,19 +105,19 @@ static int page_logger_thread_fn(void *data)
 //init and cleanup functions for the module, to start and stop the kthread
 void page_logger_init(void)
 {
-    page_logger_state.thread = kthread_run(page_logger_thread_fn,
+    page_logger_thread = kthread_run(page_logger_thread_fn,
                                            NULL, "page_logger");
-    if (IS_ERR(page_logger_state.thread)) {
+    if (IS_ERR(page_logger_thread)) {
         pr_err("page_logger: failed to start kthread: %ld\n",
-               PTR_ERR(page_logger_state.thread));
-        page_logger_state.thread = NULL;
+               PTR_ERR(page_logger_thread));
+        page_logger_thread = NULL;
     }
 }
 
 void page_logger_cleanup(void)
 {
-    if (page_logger_state.thread) {
-        kthread_stop(page_logger_state.thread);
-        page_logger_state.thread = NULL;
+    if (page_logger_thread) {
+        kthread_stop(page_logger_thread);
+        page_logger_thread = NULL;
     }
 }
