@@ -46,6 +46,9 @@ static void scan_memcg(struct mem_cgroup *memcg)
     struct mm_struct    *mm;
     u64                  total = 0;
 
+    if (!memcg->page_logger_enabled)
+        return;
+
     css_task_iter_start(&memcg->css, CSS_TASK_ITER_PROCS, &it);
 
     while ((task = css_task_iter_next(&it))) {

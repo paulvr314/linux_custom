@@ -5327,6 +5327,7 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 	//paul
 	atomic64_set(&memcg->nr_promotions, 0);
 	atomic64_set(&memcg->nr_unique_pages, 0);
+	memcg->page_logger_enabled = false;  
 #ifdef CONFIG_MEMCG_KMEM
 	memcg->kmemcg_id = -1;
 	INIT_LIST_HEAD(&memcg->objcg_list);
@@ -6638,6 +6639,38 @@ static int memory_accessed_files_show(struct seq_file *m, void *v)
     return 0;
 }
 
+//paul page logger handling
+static int memory_page_logger_enabled_show(struct seq_file *m, void *v)
+{
+    struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
+
+    seq_printf(m, "%d\n", memcg->page_logger_enabled ? 1 : 0);
+    return 0;
+}
+
+static ssize_t memory_page_logger_enabled_write(struct kernfs_open_file *of,
+                                                 char *buf, size_t nbytes,
+                                                 loff_t off)
+{
+    struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+    unsigned int val;
+    int ret;
+
+    /*
+     * kstrtouint handles leading/trailing whitespace and newlines,
+     * so "echo 1 > memory.page_logger_enabled" works correctly.
+     */
+    ret = kstrtouint(strstrip(buf), 0, &val);
+    if (ret)
+        return ret;
+
+    if (val > 1)
+        return -EINVAL;
+
+    memcg->page_logger_enabled = (val == 1);
+    return nbytes;
+}
+
 #ifdef CONFIG_NUMA
 static inline unsigned long lruvec_page_state_output(struct lruvec *lruvec,
 						     int item)
@@ -6824,6 +6857,12 @@ static struct cftype memory_files[] = {
         .name     = "accessed_files",
         .flags    = CFTYPE_NOT_ON_ROOT,
         .seq_show = memory_accessed_files_show,
+    },
+	{
+        .name     = "page_logger_enabled",
+        .flags    = CFTYPE_NOT_ON_ROOT,
+        .seq_show = memory_page_logger_enabled_show,
+        .write    = memory_page_logger_enabled_write,
     },
 	{ }	/* terminate */
 };

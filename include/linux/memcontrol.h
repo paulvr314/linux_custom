@@ -243,6 +243,9 @@ struct mem_cgroup {
 	/* Per-cgroup state for the page access logger. */
 	atomic64_t nr_unique_pages;
 
+	//should we log pages for this cgroup?
+	bool page_logger_enabled;
+
 	/*
 	 * Should the OOM killer kill all belonging tasks, had it kill one?
 	 */
