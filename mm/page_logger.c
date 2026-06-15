@@ -16,6 +16,8 @@
 #include <linux/printk.h>
 #include <linux/uaccess.h>
 #include "internal.h"          /* mm-internal helpers, already in mm/ */
+#include <linux/pagewalk.h>     /* mm_walk_ops, walk_page_range      */
+#include <linux/hugetlb.h>  
 
 #include <linux/memcontrol.h>   /* mem_cgroup, mem_cgroup_from_css        */
 #include <linux/cgroup.h>       /* css_for_each_descendant_pre,
@@ -27,14 +29,63 @@
 #define PAGE_LOGGER_OUTPUT_PATH  "/var/log/page_logger.txt"
 #define PAGE_LOGGER_INTERVAL_MS  60000   /* 60 seconds */
 
+//struct to store data during page walk, to be used in walk_page_range
+struct page_logger_walk_data {
+    struct mm_struct *mm;
+    unsigned long     count;   /* incremented for each accessed file page */
+};
+
+//callback for pte
+static int page_logger_pte_entry(pte_t *pte, unsigned long addr,
+                                 unsigned long next, struct mm_walk *walk)
+{
+    struct page_logger_walk_data *wd = walk->private;
+
+    //skips anonymous pages (TODO: check what proper handling is for anonymous vs file backed)
+    if (!walk->vma->vm_file)
+        return 0;
+
+    if (!pte_present(ptep_get(pte)))
+        return 0;
+
+    if (ptep_clear_flush_young(walk->vma, addr, pte))
+        wd->count++;
+
+    return 0;
+}
+
 //single thread for page logging
 static struct task_struct *page_logger_thread;
+
+//walk_ops struct for walk_page_range, to be used in process_mm()
+static const struct mm_walk_ops page_logger_walk_ops = {
+    .pgd_entry = NULL,
+    .p4d_entry = NULL,
+    .pud_entry = NULL,
+    .pmd_entry = NULL,
+    .pte_entry = page_logger_pte_entry,
+    .pte_hole = NULL,
+    .hugetlb_entry = NULL,
+    .test_walk = NULL,
+    .pre_vma = NULL,
+    .post_vma = NULL,
+    .walk_lock = PGWALK_WRLOCK
+};
 
 
 //walk the page table
 static u64 process_mm(struct mm_struct *mm)
 {
-    return 1;
+    struct page_logger_walk_data wd = {
+        .mm    = mm,
+        .count = 0,
+    };
+
+    mmap_write_lock(mm);
+    walk_page_range(mm, 0, TASK_SIZE, &page_logger_walk_ops, &wd);
+    mmap_write_unlock(mm);
+
+    return wd.count;
 }
 
 
