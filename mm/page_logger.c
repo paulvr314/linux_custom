@@ -24,7 +24,6 @@
                                    css_task_iter_start/next/end            */
 #include <linux/sched/mm.h>     /* get_task_mm(), mmput()                  */
 #include <linux/mm.h>           /* mm_struct, mmap_read_lock/unlock        */
-#include "internal.h"
 
 #define PAGE_LOGGER_OUTPUT_PATH  "/var/log/page_logger.txt"
 #define PAGE_LOGGER_INTERVAL_MS  60000   /* 60 seconds */
@@ -40,10 +39,6 @@ static int page_logger_pte_entry(pte_t *pte, unsigned long addr,
                                  unsigned long next, struct mm_walk *walk)
 {
     struct page_logger_walk_data *wd = walk->private;
-
-    //skips anonymous pages (TODO: check what proper handling is for anonymous vs file backed)
-    if (!walk->vma->vm_file)
-        return 0;
 
     if (!pte_present(ptep_get(pte)))
         return 0;
@@ -84,6 +79,8 @@ static u64 process_mm(struct mm_struct *mm)
     mmap_write_lock(mm);
     walk_page_range(mm, 0, TASK_SIZE, &page_logger_walk_ops, &wd);
     mmap_write_unlock(mm);
+
+    pr_info("process_mm: walked page table for mm %p, total count: %llu\n", mm, (unsigned long long)wd.count);
 
     return wd.count;
 }
