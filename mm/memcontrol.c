@@ -6631,7 +6631,7 @@ static int memory_cgroup_promotions_show(struct seq_file *sf, void *v)
 }
 
 //paul code to count page accesses
-static int memory_accessed_files_show(struct seq_file *m, void *v)
+static int memory_pages_show(struct seq_file *m, void *v)
 {
     struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
 
@@ -6640,7 +6640,7 @@ static int memory_accessed_files_show(struct seq_file *m, void *v)
 }
 
 //paul page logger handling
-static int memory_page_logger_enabled_show(struct seq_file *m, void *v)
+static int memory_count_pages_show(struct seq_file *m, void *v)
 {
     struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
 
@@ -6648,7 +6648,7 @@ static int memory_page_logger_enabled_show(struct seq_file *m, void *v)
     return 0;
 }
 
-static ssize_t memory_page_logger_enabled_write(struct kernfs_open_file *of,
+static ssize_t memory_count_pages_write(struct kernfs_open_file *of,
                                                  char *buf, size_t nbytes,
                                                  loff_t off)
 {
@@ -6854,15 +6854,15 @@ static struct cftype memory_files[] = {
 		.seq_show = memory_cgroup_promotions_show,
 	},
 	{
-        .name     = "accessed_files",
+        .name     = "pages",
         .flags    = CFTYPE_NOT_ON_ROOT,
-        .seq_show = memory_accessed_files_show,
+        .seq_show = memory_pages_show,
     },
 	{
-        .name     = "page_logger_enabled",
+        .name     = "count_pages",
         .flags    = CFTYPE_NOT_ON_ROOT,
-        .seq_show = memory_page_logger_enabled_show,
-        .write    = memory_page_logger_enabled_write,
+        .seq_show = memory_count_pages_show,
+        .write    = memory_count_pages_write,
     },
 	{ }	/* terminate */
 };
