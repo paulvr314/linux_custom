@@ -2684,6 +2684,8 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
  *
  * The downside is that we have to touch folio->_refcount against each folio.
  * But we had to alter folio->flags anyway.
+ * 
+ * notes from paul: function used by kswapd to move folios around
  */
 static void shrink_active_list(unsigned long nr_to_scan,
 			       struct lruvec *lruvec,
@@ -2724,6 +2726,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 		list_del(&folio->lru);
 
 		if (unlikely(!folio_evictable(folio))) {
+			//paul note: example of page movement, leads to a rabbit hole
 			folio_putback_lru(folio);
 			continue;
 		}
@@ -2750,13 +2753,17 @@ static void shrink_active_list(unsigned long nr_to_scan,
 			 */
 			if ((vm_flags & VM_EXEC) && folio_is_file_lru(folio)) {
 				nr_rotated += folio_nr_pages(folio);
+				//paul note: this is also the line
 				list_add(&folio->lru, &l_active);
 				continue;
 			}
 		}
 
+
+
 		folio_clear_active(folio);	/* we are de-activating */
 		folio_set_workingset(folio);
+		//paul note: I guess this is the line. 
 		list_add(&folio->lru, &l_inactive);
 	}
 

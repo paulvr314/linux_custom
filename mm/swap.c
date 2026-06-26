@@ -498,6 +498,8 @@ EXPORT_SYMBOL(folio_mark_accessed);
  * folio_batch is drained. This gives a chance for the caller of folio_add_lru()
  * have the folio added to the active list using folio_mark_accessed().
  */
+ //paul notes: this is a function that moves folios, but sometimes it is called when a folio is added
+ //back to the same lru list it was just on
 void folio_add_lru(struct folio *folio)
 {
 	struct folio_batch *fbatch;
