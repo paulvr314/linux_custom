@@ -7076,6 +7076,7 @@ out:
 	return ret;
 }
 
+//paul: called when a page fault happens, identifies which cgroup own the task
 int __mem_cgroup_charge(struct folio *folio, struct mm_struct *mm, gfp_t gfp)
 {
 	struct mem_cgroup *memcg;

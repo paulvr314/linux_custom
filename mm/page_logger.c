@@ -4,8 +4,6 @@
  *
  * added by paul
  * kernel thread that logs page access information to a file every 60 seconds. ()
- *
- * TODO: replace placeholder output with system information
  */
 
 #include <linux/kthread.h>
