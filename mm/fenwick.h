@@ -48,7 +48,7 @@ void fenwick_remove(struct fenwick_tree *ft,
 		    u64 value);
 
 /*
- * Return the depth (in pages) of the entry at @index.
+ * Return the depth of the entry at @index.
  */
 u64 fenwick_get_depth(const struct fenwick_tree *ft,
 		      unsigned long index);
