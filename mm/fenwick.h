@@ -19,9 +19,9 @@ struct fenwick_tree {
 /*
  * Initialize a Fenwick tree capable of storing up to @size indices.
  *
- * Returns 0 on success or a negative errno on failure.
+ * Returns a pointer to the initialized tree on success or NULL on failure.
  */
-int fenwick_init(struct fenwick_tree *ft, unsigned long size);
+struct fenwick_tree* fenwick_init(unsigned long size);
 
 /* Free all memory owned by the tree. */
 void fenwick_free(struct fenwick_tree *ft);

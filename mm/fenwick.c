@@ -13,14 +13,19 @@
 #include <linux/types.h>
 
 
-int fenwick_init(struct fenwick_tree *ft, unsigned long size)
+struct fenwick_tree* fenwick_init(unsigned long size)
 {
+    struct fenwick_tree *ft = kmalloc(sizeof(struct fenwick_tree), GFP_KERNEL);
+    if (!ft)
+        return NULL;
     ft->array_size = size;
     ft->highest_index = 0;
     ft->array = kvcalloc(size + 1, sizeof(u64), GFP_KERNEL);
-    if (!ft->array)
-        return -ENOMEM;
-    return 0;
+    if (!ft->array) {
+        kfree(ft);
+        return NULL;
+    }
+    return ft;
 }
 
 //static functions assume index <= highest index
@@ -57,6 +62,7 @@ void fenwick_free(struct fenwick_tree *ft)
     ft->array = NULL;
     ft->array_size = 0;
     ft->highest_index = 0;
+    kfree(ft);
 }
 
 //-------------------specialized functions for page depth tracking-------------------
