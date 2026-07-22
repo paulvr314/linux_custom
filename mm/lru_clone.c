@@ -23,23 +23,12 @@
 #include <linux/spinlock.h>
 #include <linux/circ_buf.h>
 
-
+#define FENWICK_REDRAW_PCT_CAPACITY 0.9
 
 struct lru_clone_node {
     struct list_head lru;
     unsigned long index;
     u64 value;
-};
-
-enum lru_operation_type {
-    LRU_OP_ADD,
-    LRU_OP_ACCESS,
-    LRU_OP_EVICT,
-};
-
-struct lru_operation {
-    enum lru_operation_type type;
-    struct lru_clone_node *node;
 };
 
 struct lru_clone {
@@ -51,8 +40,14 @@ struct lru_clone {
     //the spinlock must be held to touch anything in lru_clone
     atomic_t list_in_use;
     spinlock_t lock;
-}
+};
 
+struct lru_op {
+    void (*op_fn)(struct lru_clone *lc, struct lru_clone_node *node);
+    struct lru_clone_node *node;
+};
+
+//fenwick size and op queue size are parameters because they probably want to depend on cache size
 struct lru_clone* lru_clone_init(unsigned long fenwick_size, unsigned long op_queue_size) {
     //allocate lru_clone struct
     struct lru_clone *lc = kmalloc(sizeof(struct lru_clone), GFP_KERNEL);
@@ -61,7 +56,7 @@ struct lru_clone* lru_clone_init(unsigned long fenwick_size, unsigned long op_qu
     }
 
     //allocate operation queue
-    lc->op_queue.buf = kmalloc(op_queue_size * sizeof(struct lru_operation), GFP_KERNEL);
+    lc->op_queue.buf = kmalloc(op_queue_size * sizeof(struct lru_op), GFP_KERNEL);
     if (!lc->op_queue.buf) {
         kfree(lc);
         return NULL;
@@ -84,16 +79,63 @@ struct lru_clone* lru_clone_init(unsigned long fenwick_size, unsigned long op_qu
     return lc;
 }
 
-//do methods assume we have the go ahead to perform them, and update the underlying fenwick tree
+//do methods assume that either we hold the lock or the list_in_use flag
 
-//adds a new node to the end of the list, returns the new node
-static struct lru_clone_node* do_lru_add(struct lru_clone *lc, u64 value) {
-    struct lru_clone_node *node = kmalloc(sizeof(struct lru_clone_node), GFP_KERNEL);
-    if (!node) {
-        return NULL;
-    }
-    node->value = value;
-    node->index = fenwick_add_new(lc->ft, value);
+//performs an add operation to the lru list and fenwick tree
+static void do_lru_add(struct lru_clone *lc, struct lru_clone_node *node) {
     list_add_tail(&node->lru, &lc->lru);
-    return node;
+    node->index = fenwick_add_new(lc->ft, node->value);
 }
+
+//performs an access operation to lru list and fenwick tree
+static void do_lru_access(struct lru_clone *lc, struct lru_clone_node *node) {
+    list_move_tail(&node->lru, &lc->lru);
+    node->index = fenwick_move_to_back(&lc->ft, node->index, node->value);
+}
+
+//performs an evict operation to lru list and fenwick tree
+static void do_lru_evict(struct lru_clone *lc, struct lru_clone_node *node) {
+    list_del(&node->lru);
+    fenwick_remove(&lc->ft, node->index, node->value);
+}
+
+//---------fenwick tree redraw functions todo -- clarify what in here needs a lock
+
+//assumes lock is held
+static inline bool fenwick_needs_redraw(struct lru_clone *lc) {
+    return lc->ft->highest_index >= FENWICK_REDRAW_PCT_CAPACITY * lc->ft->array_size;
+}
+
+//I chose to allow concurrent writes to the op queue while clearling, but TODO: check that this will be okay
+static void clear_op_queue(struct lru_clone *lc)
+{
+    struct circ_buf *cb = &lc->op_queue;
+    unsigned long head, tail;
+
+    while (1) {
+        head = smp_load_acquire(&cb->head);   /* pairs with producer's release */
+        tail = cb->tail;
+
+        if (!CIRC_CNT(head, tail, LRU_OP_QUEUE_SIZE))
+            break;
+
+        struct lru_op op = ((struct lru_op *)cb->buf)[tail];
+
+        smp_store_release(&cb->tail,
+                           (tail + 1) & (LRU_OP_QUEUE_SIZE - 1));
+
+        op.op_fn(lc, op.node);
+    }
+}
+
+
+
+
+
+//----------flag and lock logistics
+
+
+
+//----------callable functions for outside use
+
+
