@@ -3,15 +3,19 @@
  * mm/lru_clone.c
  *
  * added by paul
- * linked list that watches for lru list updates and tracks them
- * contains a global lock to prevent concurrency issues
- * nodes contain the index to find the corresponding page in the fenwick tree
- * also handles redrawing the fenwick tree when it hits capacity
- * when this happens (or generally when the lock is held), 
- * new actions are queued and processed after the lock is released
+ * design: on page access, an operation is added to the operation queue
+ * every once in a while, or when the op queue gets too full, the opqueue is emptied
+ * all operations are performed on the lru list (linked list) and the fenwick tree
+ * then if the remaining space in the fenwick tree is smaller than the opqueue size,
+ * the fenwick tree is redrawn in o(n) time by traversing the lru list 
+ * 
+ * for this to work opqueue needs to be big enough that it doesn't need to be emptied while ft is being redrawn
  *
- * design choice: do I 1) make things spin when the flag is not set or
- * 2) always have list ops just go to the queue and have a separate thread that processes the queue?
+ * handling concurrency:
+ * enqueue opqueue: must grab spinlock and use smp function to sync with reader
+ * dequeue opqueue: must use smp function to sync with writer, can be done without lock
+ * touching lru list/fenwick tree: to prevent race conditions, must first set list_in_use flag
+ * using atomic_cmpxchg -- DO NOT use atomic_read and atomic_set as two different operations
  */
 
 #include "fenwick.h"
@@ -22,8 +26,6 @@
 #include <linux/atomic.h>
 #include <linux/spinlock.h>
 #include <linux/circ_buf.h>
-
-#define FENWICK_REDRAW_PCT_CAPACITY 0.9
 
 struct lru_clone_node {
     struct list_head lru;
@@ -38,13 +40,14 @@ struct lru_clone {
 
     //usage: the list_in_use flag is set when we traverse the list to redraw the fenwick tree,
     //the spinlock must be held to touch anything in lru_clone
-    atomic_t list_in_use;
+    bool list_in_use;
     spinlock_t lock;
 };
 
 struct lru_op {
     void (*op_fn)(struct lru_clone *lc, struct lru_clone_node *node);
     struct lru_clone_node *node;
+    unsigned long timestamp;
 };
 
 //fenwick size and op queue size are parameters because they probably want to depend on cache size
@@ -74,7 +77,7 @@ struct lru_clone* lru_clone_init(unsigned long fenwick_size, unsigned long op_qu
 
     //initialize other members
     INIT_LIST_HEAD(&lc->lru);
-    atomic_set(&lc->list_in_use, 0);
+    lc->list_in_use = false;
     spin_lock_init(&lc->lock);
     return lc;
 }
@@ -128,14 +131,31 @@ static void clear_op_queue(struct lru_clone *lc)
     }
 }
 
+static void redraw_fenwick_tree(struct lru_clone *lc) {
+    //this will be called 
+    atomic_set(&lc->list_in_use, 1); 
+    
+}
+
+//check should empty opqueue -> empty opqueue -> check should redraw ft -> redraw ft
+static void do_lru_clone_struct_upkeep(struct lru_clone *lc) {
+
+}
 
 
+//----------handling for page promotion and eviction events
 
+static struct lru_clone_node* init_new_node(u64 value) {
+    struct lru_clone_node *node = kmalloc(sizeof(struct lru_clone_node), GFP_KERNEL);
+    node->value = value;
+    return node;
+}
 
-//----------flag and lock logistics
-
-
-
-//----------callable functions for outside use
+//handles a new page being accessed, and returns a pointer to its lru_clone_node
+struct lru_clone_node* lru_clone_add_new(struct lru_clone *lc, u64 value) {
+    struct lru_clone_node *node = init_new_node(value);
+    
+    
+}
 
 
