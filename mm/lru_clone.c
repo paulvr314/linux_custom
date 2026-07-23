@@ -40,10 +40,11 @@ struct lru_clone {
 
     //usage: the list_in_use flag is set when we traverse the list to redraw the fenwick tree,
     //the spinlock must be held to touch anything in lru_clone
-    bool list_in_use;
+    atomic_t list_in_use;
     spinlock_t lock;
 };
 
+//you could make this smaller by using an enumeration rather than a function pointer but I did not do this
 struct lru_op {
     void (*op_fn)(struct lru_clone *lc, struct lru_clone_node *node);
     struct lru_clone_node *node;
@@ -77,7 +78,7 @@ struct lru_clone* lru_clone_init(unsigned long fenwick_size, unsigned long op_qu
 
     //initialize other members
     INIT_LIST_HEAD(&lc->lru);
-    lc->list_in_use = false;
+    atomic_set(&lc->list_in_use, 0);
     spin_lock_init(&lc->lock);
     return lc;
 }
@@ -100,6 +101,7 @@ static void do_lru_access(struct lru_clone *lc, struct lru_clone_node *node) {
 static void do_lru_evict(struct lru_clone *lc, struct lru_clone_node *node) {
     list_del(&node->lru);
     fenwick_remove(&lc->ft, node->index, node->value);
+    kfree(node);
 }
 
 //---------fenwick tree redraw functions todo -- clarify what in here needs a lock
@@ -109,8 +111,8 @@ static inline bool fenwick_needs_redraw(struct lru_clone *lc) {
     return lc->ft->highest_index >= FENWICK_REDRAW_PCT_CAPACITY * lc->ft->array_size;
 }
 
-//I chose to allow concurrent writes to the op queue while clearling, but TODO: check that this will be okay
-static void clear_op_queue(struct lru_clone *lc)
+//clears queue, assumes list_in_use is set, but does not need to hold lock
+static void op_queue_clear(struct lru_clone *lc)
 {
     struct circ_buf *cb = &lc->op_queue;
     unsigned long head, tail;
@@ -131,6 +133,22 @@ static void clear_op_queue(struct lru_clone *lc)
     }
 }
 
+//does concurrency safe enqueue then notifies lru draining thread if list is getting full
+static void op_queue_enqueue(
+    struct lru_clone *lc, 
+    void (*op_fn)(struct lru_clone *lc, struct lru_clone_node *node),
+    struct lru_clone_node *node,
+    unsigned long timestamp
+) {
+    //do circ buf setup
+    //grab lock
+    //enqueue
+    //release lock
+    //check queue needs to be emptied
+    //if so, try to set list in use flag
+    //if we can set the list in use flag, then wake up queue clearing thred
+}
+
 static void redraw_fenwick_tree(struct lru_clone *lc) {
     //this will be called 
     atomic_set(&lc->list_in_use, 1); 
@@ -138,24 +156,32 @@ static void redraw_fenwick_tree(struct lru_clone *lc) {
 }
 
 //check should empty opqueue -> empty opqueue -> check should redraw ft -> redraw ft
-static void do_lru_clone_struct_upkeep(struct lru_clone *lc) {
+static void do_lru_clone_upkeep(struct lru_clone *lc) {
 
 }
 
 
 //----------handling for page promotion and eviction events
 
-static struct lru_clone_node* init_new_node(u64 value) {
+static struct lru_clone_node* init_lru_clone_node(u64 value) {
     struct lru_clone_node *node = kmalloc(sizeof(struct lru_clone_node), GFP_KERNEL);
     node->value = value;
     return node;
 }
 
 //handles a new page being accessed, and returns a pointer to its lru_clone_node
-struct lru_clone_node* lru_clone_add_new(struct lru_clone *lc, u64 value) {
-    struct lru_clone_node *node = init_new_node(value);
-    
-    
+struct lru_clone_node* lru_clone_add_new(struct lru_clone *lc, u64 value, unsigned long timestamp) {
+    struct lru_clone_node *node = init_lru_clone_node(value);
+    op_queue_enqueue(lc, do_lru_add, node, timestamp);
+    return node;
 }
 
+//handles an existing page being accessed, returns a pointer to its lru_clone_node
+void lru_clone_access(struct lru_clone *lc, struct lru_clone_node *node, unsigned long timestamp) {
+    op_queue_enqueue(lc, do_lru_access, node, timestamp);
+}
 
+//handles eviction and frees the associated node.
+void lru_clone_evict(struct lru_clone *lc, struct lru_clone_node *node, unsigned long timestamp) {
+    op_queue_enqueue(lc, do_lru_evict, node, timestamp);
+}
