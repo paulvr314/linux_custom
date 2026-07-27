@@ -24,6 +24,7 @@
  */
 
 #include "fenwick.h"
+#include <linux/lru_clone.h>
 #include <linux/mm.h>
 #include <linux/types.h>
 #include <linux/list.h>
@@ -307,4 +308,51 @@ void lru_clone_access(struct lru_clone *lc, struct lru_clone_node *node, unsigne
 // handles eviction and frees the associated node.
 void lru_clone_evict(struct lru_clone *lc, struct lru_clone_node *node, unsigned long timestamp) {
     op_queue_enqueue(lc, do_lru_evict, node, timestamp);
+}
+
+
+/* ========================================================================== *
+ * 6. Teardown & Cleanup
+ * ========================================================================== */
+
+void lru_clone_destroy(struct lru_clone *lc)
+{
+    struct lru_clone_node *node, *next;
+
+    if (!lc)
+        return;
+
+    // 1. Stop the upkeep thread first so it doesn't try to process the queue
+    // while we are freeing the underlying data structures.
+    lru_clone_upkeep_stop(lc);
+
+    // 2. Lock the list. Since we are destroying the structure, we assume 
+    // no new operations are being submitted, but this ensures safety.
+    atomic_set(&lc->list_in_use, 1);
+
+    // 3. Flush the op_queue. This is critical! 
+    // Any pending do_lru_add ops have allocated nodes that aren't in the list yet.
+    // Any pending do_lru_evict ops have nodes that need to be freed.
+    // Clearing the queue forces these nodes to their final state.
+    op_queue_clear(lc);
+
+    // 4. Safely iterate through the LRU list and free all remaining nodes.
+    // We MUST use list_for_each_entry_safe when deleting elements during iteration.
+    list_for_each_entry_safe(node, next, &lc->lru, lru) {
+        list_del(&node->lru);
+        kfree(node);
+    }
+
+    // 5. Free the Fenwick tree.
+    // Note: I am assuming you have a fenwick_free() function in fenwick.h.
+    // If not, you need to add it, or manually free(lc->ft->array) then free(lc->ft).
+    if (lc->ft)
+        fenwick_free(lc->ft);
+
+    // 6. Free the operation queue buffer
+    if (lc->op_queue.buf)
+        kfree(lc->op_queue.buf);
+
+    // 7. Finally, free the main structure
+    kfree(lc);
 }
