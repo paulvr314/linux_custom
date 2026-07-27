@@ -12,7 +12,7 @@
  */
 struct fenwick_tree {
 	unsigned long array_size;
-	unsigned long highest_index;
+	unsigned long index;
 	u64 *array;
 };
 

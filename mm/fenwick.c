@@ -19,7 +19,7 @@ struct fenwick_tree* fenwick_init(unsigned long size)
     if (!ft)
         return NULL;
     ft->array_size = size;
-    ft->highest_index = 0;
+    ft->index = 0;
     ft->array = kvcalloc(size + 1, sizeof(u64), GFP_KERNEL);
     if (!ft->array) {
         kfree(ft);
@@ -61,19 +61,19 @@ void fenwick_free(struct fenwick_tree *ft)
     kvfree(ft->array);
     ft->array = NULL;
     ft->array_size = 0;
-    ft->highest_index = 0;
+    ft->index = 0;
     kfree(ft);
 }
 
 //-------------------specialized functions for page depth tracking-------------------
 
 
-//adds a new element at highest_index + 1, returns the index of the new element
+//adds a new element at index + 1, returns the index of the new element
 unsigned long fenwick_add_new(struct fenwick_tree *ft, u64 value)
 {
-    ft->highest_index++;
-    fenwick_add(ft, ft->highest_index, value);
-    return ft->highest_index;
+    ft->index++;
+    fenwick_add(ft, ft->index, value);
+    return ft->index;
 }
 
 //moves page to the back of the array, returns the new index of the page
@@ -90,6 +90,5 @@ void fenwick_remove(struct fenwick_tree *ft, unsigned long index, u64 value)
 
 u64 fenwick_get_depth(struct fenwick_tree *ft, unsigned long index)
 {
-    return fenwick_sum(ft, ft->highest_index) - fenwick_sum(ft, index);
+    return fenwick_sum(ft, ft->index) - fenwick_sum(ft, index);
 }
-
