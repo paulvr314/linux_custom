@@ -4055,7 +4055,8 @@ restart:
 		    !(folio_test_anon(folio) && folio_test_swapbacked(folio) &&
 		      !folio_test_swapcache(folio)))
 			folio_mark_dirty(folio);
-
+			
+		//paul note: this is the call to move a folio to the youngest generation
 		old_gen = folio_update_gen(folio, new_gen);
 		if (old_gen >= 0 && old_gen != new_gen)
 			update_batch_size(walk, folio, old_gen, new_gen);
@@ -4136,6 +4137,8 @@ static void walk_pmd_range_locked(pud_t *pud, unsigned long addr, struct vm_area
 		      !folio_test_swapcache(folio)))
 			folio_mark_dirty(folio);
 
+		//paul note: call to move non-leaf page or huge page to youngest generation
+		//I guess this is what they chagned in blowfish
 		old_gen = folio_update_gen(folio, new_gen);
 		if (old_gen >= 0 && old_gen != new_gen)
 			update_batch_size(walk, folio, old_gen, new_gen);
@@ -4530,6 +4533,14 @@ static bool try_to_inc_max_seq(struct lruvec *lruvec, unsigned long max_seq,
 	walk->can_swap = can_swap;
 	walk->force_scan = force_scan;
 
+	//paul note: as we can see here, making a new gen is tied to the walker
+	// descriptions are as follows:
+	// iterate_mm_list: confusing but i think this goes to next mm_struct in our cgroup
+	// walk_mm: contains the call to walk_page_range for the mm 
+	// note: this walk sometimes just doesn't happen, if some other process
+	// happens to be writing to this page range. Oh well.
+	// inc_max_seq: actually creates the new generation
+	//TODO figure out which of the 3 fns actually changes shit.
 	do {
 		success = iterate_mm_list(lruvec, walk, &mm);
 		if (mm)
@@ -4640,6 +4651,8 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
  *                          rmap/PT walk feedback
  ******************************************************************************/
 
+ //paul note: this function also moves pages around -- I don't know how
+ //this fits into MGLRU
 /*
  * This function exploits spatial locality when shrink_folio_list() walks the
  * rmap. It scans the adjacent PTEs of a young PTE and promotes hot pages. If
@@ -4721,6 +4734,7 @@ void lru_gen_look_around(struct page_vma_mapped_walk *pvmw)
 			folio_mark_dirty(folio);
 
 		if (walk) {
+			//why does this exist?
 			old_gen = folio_update_gen(folio, new_gen);
 			if (old_gen >= 0 && old_gen != new_gen)
 				update_batch_size(walk, folio, old_gen, new_gen);
@@ -5254,6 +5268,8 @@ retry:
 	return scanned;
 }
 
+//paul note: This is the decision to run the aging process. See comments for alg
+//Let's assume MIN_NR_GENS = 2 (this is usually what it is set to)
 static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 			     struct scan_control *sc, bool can_swap, unsigned long *nr_to_scan)
 {
@@ -5266,19 +5282,29 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 	DEFINE_MIN_SEQ(lruvec);
 
 	/* whether this lruvec is completely out of cold folios */
+	//if there are currently 2 or fewer generations, we must make a new one
 	if (min_seq[!can_swap] + MIN_NR_GENS > max_seq) {
 		*nr_to_scan = 0;
 		return true;
 	}
 
+	//This loop goes through all the generations and:
+	//sets young to equal the number of pages in the youngest generation
+	//sets old to equal the number of pages in old generation
+	//If there are 3 generations old gen is the youngest
+	//If there are 4 generations old gen is the second youngest (4 gens always returns false)
 	for (type = !can_swap; type < ANON_AND_FILE; type++) {
 		unsigned long seq;
 
+		//loop through each generation
 		for (seq = min_seq[type]; seq <= max_seq; seq++) {
+			//size counts the total number of pages in that generation
 			unsigned long size = 0;
 
 			gen = lru_gen_from_seq(seq);
 
+			//generations are separated into zones, 
+			//go through each zone and add to size
 			for (zone = 0; zone < MAX_NR_ZONES; zone++)
 				size += max(READ_ONCE(lrugen->nr_pages[gen][type][zone]), 0L);
 
@@ -5298,6 +5324,7 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 	 * stalls when the number of generations reaches MIN_NR_GENS. Hence, the
 	 * ideal number of generations is MIN_NR_GENS+1.
 	 */
+	// if there are more than 3 generations, automatically decide no
 	if (min_seq[!can_swap] + MIN_NR_GENS < max_seq)
 		return false;
 
@@ -5308,11 +5335,18 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 	 * aging cares about the upper bound of hot pages, while the eviction
 	 * cares about the lower bound of cold pages.
 	 */
+	//if we got here, we know there are exactly 3 generations
+	//if more than half of the total pages are in youngest generation, then we space
+	//them out by making an even younger generation and moving some pages to it
 	if (young * MIN_NR_GENS > total)
 		return true;
+	//if less than 1/4 of all pages are in oldest generation, 
+	// then we need to make a new generation so that pages in second youngest gen
+	// will be ready for eviction
 	if (old * (MIN_NR_GENS + 2) < total)
 		return true;
 
+	//otherwise we still have a balanced system so we do nothing
 	return false;
 }
 
@@ -5338,6 +5372,8 @@ static long get_nr_to_scan(struct lruvec *lruvec, struct scan_control *sc, bool 
 		return nr_to_scan;
 
 	/* skip this lruvec as it's low on cold folios */
+	//paul note: This is the call to run the page walker thread
+	pr_info("PAGEWALK LOG: walker thread was called");
 	return try_to_inc_max_seq(lruvec, max_seq, sc, can_swap, false) ? -1 : 0;
 }
 
