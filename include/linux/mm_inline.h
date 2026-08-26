@@ -9,6 +9,8 @@
 #include <linux/userfaultfd_k.h>
 #include <linux/swapops.h>
 
+#include "mpc.h"
+
 /**
  * folio_is_file_lru - Should the folio be on a file LRU or anon LRU?
  * @folio: The folio to test.
@@ -259,6 +261,9 @@ static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio,
 		list_add_tail(&folio->lru, &lrugen->folios[gen][type][zone]);
 	else
 		list_add(&folio->lru, &lrugen->folios[gen][type][zone]);
+
+	//paul hook on case for new page going into memory (depth 0).
+	mpc_hook_first_access(folio);
 
 	return true;
 }

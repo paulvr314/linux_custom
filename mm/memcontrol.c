@@ -69,6 +69,7 @@
 #include <net/ip.h>
 #include "slab.h"
 #include "swap.h"
+#include "mpc.h"
 
 #include <linux/uaccess.h>
 
@@ -5340,7 +5341,7 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 	memcg->deferred_split_queue.split_queue_len = 0;
 #endif
 	lru_gen_init_memcg(memcg);
-	return memcg;
+	return memcg;	
 fail:
 	mem_cgroup_id_remove(memcg);
 	__mem_cgroup_free(memcg);
@@ -5383,6 +5384,9 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 		root_mem_cgroup = memcg;
 		return &memcg->css;
 	}
+
+	//paul mpc setup goes here -- TODO: how to choose parameters?
+	memcg->mpc = mpc_endpoint_alloc(MPC_BINWIDTH, MPC_MAX_DEPTH);
 
 	if (cgroup_subsys_on_dfl(memory_cgrp_subsys) && !cgroup_memory_nosocket)
 		static_branch_inc(&memcg_sockets_enabled_key);
@@ -5496,6 +5500,9 @@ static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 	if (!cgroup_memory_nobpf)
 		static_branch_dec(&memcg_bpf_enabled_key);
 #endif
+
+	//paul mpc free
+	mpc_endpoint_free(memcg->mpc);
 
 	vmpressure_cleanup(&memcg->vmpressure);
 	cancel_work_sync(&memcg->high_work);

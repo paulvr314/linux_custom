@@ -295,10 +295,16 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 
 	mod_lruvec_state(lruvec, WORKINGSET_REFAULT_BASE + type, delta);
 
-	if (!recent)
-		goto unlock;
-
 	lrugen = &lruvec->lrugen;
+
+	if (!recent) {
+		//paul hook for slow refault
+		mpc_hook_slow_refault(folio, lrugen);
+		goto unlock;
+	}
+
+	// hook for working set refault
+	mpc_hook_ws_refault(folio, lrugen);
 
 	hist = lru_hist_from_seq(READ_ONCE(lrugen->min_seq[type]));
 	/* see the comment in folio_lru_refs() */

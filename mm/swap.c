@@ -412,6 +412,8 @@ static void __lru_cache_activate_folio(struct folio *folio)
 }
 
 #ifdef CONFIG_LRU_GEN
+//paul -- this path is called iff and only if MGLRU is functional and enabled
+
 static void folio_inc_refs(struct folio *folio)
 {
 	unsigned long new_flags, old_flags = READ_ONCE(folio->flags);
@@ -509,7 +511,7 @@ void folio_add_lru(struct folio *folio)
 	/* see the comment in lru_gen_add_folio() */
 	if (lru_gen_enabled() && !folio_test_unevictable(folio) &&
 	    lru_gen_in_fault() && !(current->flags & PF_MEMALLOC))
-		folio_set_active(folio);
+		folio_set_active(folio); 	
 
 	folio_get(folio);
 	local_lock(&cpu_fbatches.lock);

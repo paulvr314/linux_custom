@@ -4066,6 +4066,8 @@ out_release:
  */
 static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 {
+	//paul note -- this is perhaps another mpc hook location, chose to hook
+	//lru_gen_add_folio in mm_inline.h instead.
 	bool uffd_wp = vmf_orig_pte_uffd_wp(vmf);
 	struct vm_area_struct *vma = vmf->vma;
 	struct folio *folio;

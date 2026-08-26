@@ -28,6 +28,9 @@ struct page;
 struct mm_struct;
 struct kmem_cache;
 
+//paul -- forward definition for mpc
+struct mpc_endpoint;
+
 /* Cgroup-specific page state, on top of universal node page state */
 enum memcg_stat_item {
 	MEMCG_SWAP = NR_VM_NODE_STAT_ITEMS,
@@ -235,6 +238,9 @@ struct mem_cgroup {
 
 	/* vmpressure notifications */
 	struct vmpressure vmpressure;
+
+	//paul -- required for reporting MPC curve
+	struct mpc_endpoint *mpc;
 
 	/*
 	 * Should the OOM killer kill all belonging tasks, had it kill one?

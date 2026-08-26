@@ -67,6 +67,7 @@
 
 #include "internal.h"
 #include "swap.h"
+#include "mpc.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>
@@ -4057,8 +4058,15 @@ restart:
 			folio_mark_dirty(folio);
 
 		old_gen = folio_update_gen(folio, new_gen);
-		if (old_gen >= 0 && old_gen != new_gen)
+
+		//paul hook point for mpc
+		if (old_gen >= 0) {
+			mpc_hook_from_gen(folio, old_gen, new_gen, &walk->lruvec->lrugen, memcg);
+		}
+
+		if (old_gen >= 0 && old_gen != new_gen) {
 			update_batch_size(walk, folio, old_gen, new_gen);
+		}
 	}
 
 	if (i < PTRS_PER_PTE && get_next_vma(PMD_MASK, PAGE_SIZE, args, &start, &end))
@@ -4729,6 +4737,11 @@ void lru_gen_look_around(struct page_vma_mapped_walk *pvmw)
 		}
 
 		old_gen = folio_lru_gen(folio);
+
+		//paul second hook for in mem access
+		if (old_gen >= 0)
+			mpc_hook_from_gen(folio, old_gen, new_gen, &lruvec->lrugen, memcg);
+
 		if (old_gen < 0)
 			folio_set_referenced(folio);
 		else if (old_gen != new_gen)
