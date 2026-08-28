@@ -16,6 +16,8 @@
 #ifndef _MPC_H
 #define _MPC_H
 
+#define DEPTH_NR_BINS         1000 
+
 /* Forward declarations only -- these types are used exclusively as
  * pointers in this header, so we never need their full definitions
  * here. Full definitions are pulled in by mpc.c as needed.

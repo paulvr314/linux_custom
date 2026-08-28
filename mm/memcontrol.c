@@ -74,6 +74,7 @@
 #include <linux/uaccess.h>
 
 #include <trace/events/vmscan.h>
+#include <atomic.h>
 
 struct cgroup_subsys memory_cgrp_subsys __read_mostly;
 EXPORT_SYMBOL(memory_cgrp_subsys);
@@ -6625,6 +6626,22 @@ static int memory_stat_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+static int memory_cgroup_mpc_show(struct seq_file *sf, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_seq(sf);
+	struct mpc_endpoint *mpc = memcg->mpc;
+	atomic_t *bins = &mpc->depth_bins;
+	seq_printf(m, "%d %u %u\n", DEPTH_NR_BINS, mpc->binwidth, mpc->max_depth_bin);
+
+	int i;
+    for (i = 0; i < DEPTH_NR_BINS; i++) {
+        seq_printf(m, "%d\n", atomic_read(&bins[i]));
+    }
+    return 0;
+}
+
+
+
 #ifdef CONFIG_NUMA
 static inline unsigned long lruvec_page_state_output(struct lruvec *lruvec,
 						     int item)
@@ -6802,6 +6819,11 @@ static struct cftype memory_files[] = {
 		.name = "reclaim",
 		.flags = CFTYPE_NS_DELEGATABLE,
 		.write = memory_reclaim,
+	},
+	{
+		.name = "mpc",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.seq_show = memory_cgroup_mpc_show,
 	},
 	{ }	/* terminate */
 };

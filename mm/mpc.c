@@ -6,6 +6,12 @@
  * puts page depths into bins (probably linearly spaced) and exports results to cgroup fs.
  */
 
+#include <linux/kthread.h>
+#include <linux/delay.h>
+#include <linux/fs.h>
+#include <linux/timekeeping.h>
+#include <linux/printk.h>
+#include <linux/uaccess.h>
 
 #include <linux/types.h>
 #include <linux/atomic.h>
@@ -18,22 +24,17 @@
 
 
 /* ---------------------------------------------------------------------
- * Tunables
+ * definitions and Data structures
  * --------------------------------------------------------------------- */
 
-
-#define DEPTH_NR_BINS         1000          //1000 u32s make mpc_endpoint about 1 page
-
-
-/* ---------------------------------------------------------------------
- * Data structures
- * --------------------------------------------------------------------- */
+#define THIRTY_SECOND_INTERVAL_MS 30000 
 
 struct mpc_endpoint {
 	atomic_t depth_bins[DEPTH_NR_BINS];
 	u32 binwidth;
 	u32 max_depth_bin;
 	bool enabled;
+    struct task_struct *thread;
 };
 
 /* ---------------------------------------------------------------------
@@ -146,10 +147,26 @@ void mpc_hook_slow_refault(struct folio *folio, struct lru_gen_folio *lrugen)
 }
 
 /* ---------------------------------------------------------------------
- * Export to fs
+ * Thread stuff (handles file export every 30s)
  * --------------------------------------------------------------------- */
 
+  
+static int mpc_thread_fn(void *data) 
+{
+    pr_info("page_logger: thread started\n");
 
+    int i = 0;
+
+    //note this is doing nothing at the moment, later will do aditional table walks if needed.
+
+    while (true) {
+        msleep_interruptible(THIRTY_SECOND_INTERVAL_MS);
+        i++;
+    }
+
+    pr_info("page_logger: thread stopping\n");
+    return 0;
+}
 
 
 /* ---------------------------------------------------------------------
@@ -169,10 +186,13 @@ void mpc_hook_slow_refault(struct folio *folio, struct lru_gen_folio *lrugen)
 	mpc->max_depth_bin = max_depth / binwidth;
 	mpc->enabled = true;
 
+    mpc->thread = kthread_run(mpc_thread_fn, NULL, "mpc_thread");
+
 	return mpc;
  }
 
  void mpc_endpoint_free(struct mpc_endpoint *mpc)
  {
+    kthread_stop(mpc->thread);
 	kfree(mpc);
  }
