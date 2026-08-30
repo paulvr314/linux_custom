@@ -5387,7 +5387,7 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	}
 
 	//paul mpc setup goes here -- TODO: how to choose parameters?
-	memcg->mpc = mpc_endpoint_alloc(MPC_BINWIDTH, MPC_MAX_DEPTH);
+	memcg->mpc = mpc_endpoint_alloc(memcg);
 
 	if (cgroup_subsys_on_dfl(memory_cgrp_subsys) && !cgroup_memory_nosocket)
 		static_branch_inc(&memcg_sockets_enabled_key);

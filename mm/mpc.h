@@ -16,7 +16,8 @@
 #ifndef _MPC_H
 #define _MPC_H
 
-#define DEPTH_NR_BINS         1000 
+#define DEPTH_NR_BINS         1000
+#define MPC_MAX_DEPTH         5000000
 
 /* Forward declarations only -- these types are used exclusively as
  * pointers in this header, so we never need their full definitions
@@ -62,8 +63,7 @@ void mpc_hook_slow_refault(struct folio *folio, struct lru_gen_folio *lrugen);
  * is safe -- mpc.h only needs the forward declaration above.
  * --------------------------------------------------------------------- */
 
-struct mpc_endpoint *mpc_endpoint_alloc(u32 binwidth, u32 max_depth,
-					 struct mem_cgroup *memcg);
+struct mpc_endpoint *mpc_endpoint_alloc(struct mem_cgroup *memcg);
 void mpc_endpoint_free(struct mpc_endpoint *mpc);
 
 #endif /* _MPC_H */

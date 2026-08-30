@@ -27,7 +27,7 @@
  * definitions and Data structures
  * --------------------------------------------------------------------- */
 
-#define THIRTY_SECOND_INTERVAL_MS 30000 
+ #define THIRTY_SECOND_INTERVAL_MS 30000 
 
 struct mpc_endpoint {
 	atomic_t depth_bins[DEPTH_NR_BINS];
@@ -89,7 +89,7 @@ static inline bool mpc_should_track(struct folio *folio, struct mem_cgroup *memc
     return true;
 }
 
-void record_depth(struct mpc_endpoint *mpc, u32 depth)
+static void record_depth(struct mpc_endpoint *mpc, u32 depth)
 {
 	u32 bin;
 
@@ -173,7 +173,7 @@ static int mpc_thread_fn(void *data)
  * Init / teardown 
  * --------------------------------------------------------------------- */
 
- struct mpc_endpoint *mpc_endpoint_alloc(u32 binwidth, u32 max_depth, struct mem_cgroup *memcg)
+ struct mpc_endpoint *mpc_endpoint_alloc(struct mem_cgroup *memcg)
  {
 	if (!mpc_mglru_active())
 		return NULL;
@@ -182,8 +182,8 @@ static int mpc_thread_fn(void *data)
 	if (!mpc)
 		return NULL;
 
-	mpc->binwidth = binwidth;
-	mpc->max_depth_bin = max_depth / binwidth;
+	mpc->max_depth_bin = MPC_MAX_DEPTH;
+    mpc->binwidth = MPC_MAX_DEPTH / DEPTH_NR_BINS;
 	mpc->enabled = true;
 
     mpc->thread = kthread_run(mpc_thread_fn, NULL, "mpc_thread");
