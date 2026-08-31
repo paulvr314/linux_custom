@@ -74,7 +74,6 @@
 #include <linux/uaccess.h>
 
 #include <trace/events/vmscan.h>
-#include <atomic.h>
 
 struct cgroup_subsys memory_cgrp_subsys __read_mostly;
 EXPORT_SYMBOL(memory_cgrp_subsys);
@@ -6630,12 +6629,15 @@ static int memory_cgroup_mpc_show(struct seq_file *sf, void *v)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_seq(sf);
 	struct mpc_endpoint *mpc = memcg->mpc;
+	if (!mpc)
+        return 0;
+	
 	atomic_t *bins = &mpc->depth_bins;
-	seq_printf(m, "%d %u %u\n", DEPTH_NR_BINS, mpc->binwidth, mpc->max_depth_bin);
+	seq_printf(sf, "%d %u %u\n", DEPTH_NR_BINS, mpc->binwidth, mpc->max_depth_bin);
 
 	int i;
     for (i = 0; i < DEPTH_NR_BINS; i++) {
-        seq_printf(m, "%d\n", atomic_read(&bins[i]));
+        seq_printf(sf, "%d\n", atomic_read(&bins[i]));
     }
     return 0;
 }

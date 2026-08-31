@@ -61,6 +61,23 @@ static inline bool mpc_mglru_active(void)
  * buffer management
  * --------------------------------------------------------------------- */
 
+ /* Maps a generation array index (0..MAX_NR_GENS-1) to its active sequence number */
+static unsigned long mpc_gen_to_seq(struct lru_gen_folio *lrugen, int gen)
+{
+    unsigned long max_seq = READ_ONCE(lrugen->max_seq);
+    unsigned long min_seq = READ_ONCE(lrugen->min_seq[LRU_GEN_ANON]);
+    unsigned long seq;
+
+    /* Search the active generation sequence window [min_seq, max_seq] */
+    for (seq = min_seq; seq <= max_seq; seq++) {
+        if (lru_gen_from_seq(seq) == gen)
+            return seq;
+    }
+
+    /* Fallback if gen is out of active range */
+    return min_seq;
+}
+
 //get total number of pages -- this may be too slow to run on every access
 //in the future I may want to precalcuate this to save time
 static unsigned long mpc_sum_anon_gens(struct lru_gen_folio *lrugen,
@@ -78,6 +95,7 @@ static unsigned long mpc_sum_anon_gens(struct lru_gen_folio *lrugen,
     }
     return pages;
 }
+
 
 //checks that page is anon and that mpc is enabled for the memcg
 static inline bool mpc_should_track(struct folio *folio, struct mem_cgroup *memcg)
@@ -116,9 +134,19 @@ void mpc_hook_from_gen(struct folio *folio, unsigned long old_gen,
     if (!mpc_should_track(folio, memcg))
         return;
 
-    //younger gens + half of own gen
-    unsigned long depth = mpc_sum_anon_gens(lrugen, old_gen + 1, new_gen);
-    depth += mpc_sum_anon_gens(lrugen, old_gen, old_gen) / 2;
+    /* Convert old_gen index to its true sequence number */
+    unsigned long old_seq = mpc_gen_to_seq(lrugen, old_gen);
+    unsigned long max_seq = READ_ONCE(lrugen->max_seq);
+
+    unsigned long depth = 0;
+
+    /* 1. Sum pages in strictly younger generations (old_seq + 1 up to max_seq) */
+    if (old_seq < max_seq)
+        depth += mpc_sum_anon_gens(lrugen, old_seq + 1, max_seq);
+
+    /* 2. Add half of its own generation */
+    depth += mpc_sum_anon_gens(lrugen, old_seq, old_seq) / 2;
+
     record_depth(memcg->mpc, depth);
 }
 
@@ -159,7 +187,7 @@ static int mpc_thread_fn(void *data)
 
     //note this is doing nothing at the moment, later will do aditional table walks if needed.
 
-    while (true) {
+    while (!kthread_should_stop()) {
         msleep_interruptible(THIRTY_SECOND_INTERVAL_MS);
         i++;
     }
@@ -182,7 +210,7 @@ static int mpc_thread_fn(void *data)
 	if (!mpc)
 		return NULL;
 
-	mpc->max_depth_bin = MPC_MAX_DEPTH;
+	mpc->max_depth_bin = DEPTH_NR_BINS - 1;
     mpc->binwidth = MPC_MAX_DEPTH / DEPTH_NR_BINS;
 	mpc->enabled = true;
 
@@ -191,8 +219,11 @@ static int mpc_thread_fn(void *data)
 	return mpc;
  }
 
- void mpc_endpoint_free(struct mpc_endpoint *mpc)
- {
-    kthread_stop(mpc->thread);
-	kfree(mpc);
- }
+void mpc_endpoint_free(struct mpc_endpoint *mpc)
+{
+    if (!mpc)
+        return;
+    if (!IS_ERR_OR_NULL(mpc->thread))
+        kthread_stop(mpc->thread);
+    kfree(mpc);
+}
