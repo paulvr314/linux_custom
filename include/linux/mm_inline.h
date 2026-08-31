@@ -9,7 +9,7 @@
 #include <linux/userfaultfd_k.h>
 #include <linux/swapops.h>
 
-#include "mpc.h"
+#include <linux/mpc.h>
 
 /**
  * folio_is_file_lru - Should the folio be on a file LRU or anon LRU?

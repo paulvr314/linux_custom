@@ -69,7 +69,8 @@
 #include <net/ip.h>
 #include "slab.h"
 #include "swap.h"
-#include "mpc.h"
+
+#include <linux/mpc.h>
 
 #include <linux/uaccess.h>
 

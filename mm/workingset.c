@@ -17,6 +17,8 @@
 #include <linux/fs.h>
 #include <linux/mm.h>
 
+#include <linux/mpc.h>
+
 /*
  *		Double CLOCK lists
  *

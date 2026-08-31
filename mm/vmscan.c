@@ -67,7 +67,7 @@
 
 #include "internal.h"
 #include "swap.h"
-#include "mpc.h"
+#include <linux/mpc.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>

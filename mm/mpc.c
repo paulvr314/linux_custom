@@ -20,7 +20,7 @@
 #include <linux/mmzone.h>
 #include <linux/swap.h>
 
-#include "mpc.h"
+#include <linux/mpc.h>
 
 
 /* ---------------------------------------------------------------------
